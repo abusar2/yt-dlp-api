@@ -21,13 +21,13 @@ app.add_middleware(
 def read_root():
     return {"status": "alive", "message": "Stable API is running perfectly without YouTube/Proxy!"}
 
-# 2. مسار جلب الفيديو (تنظيف كامل من أكواد يوتيوب والبروكسي)
+# 2. مسار جلب الفيديو
 @app.get("/get-video")
 def get_video(url: str = Query(..., description="The URL of the video")):
     if not url:
         raise HTTPException(status_code=400, detail="Missing URL parameter")
     
-    # إعدادات قياسية وسريعة جداً للمنصات الأخرى
+    # إعدادات قياسية وسريعة جداً للمنصات المدعومة
     ydl_opts = {
         'format': 'best',
         'quiet': True,
@@ -67,7 +67,10 @@ async def proxy_download(url: str = Query(..., description="The direct video URL
                     async for chunk in response.aiter_bytes(chunk_size=8192):
                         yield chunk
         
-        safe_filename = "".join([c for c in filename if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+        # تنظيف العنوان: الإبقاء فقط على الحروف الإنجليزية والأرقام والمسافات ASCII لمنع خطأ latin-1
+        safe_filename = "".join([c for c in filename if c.isalnum() and c.isascii() or c == ' ']).strip()
+        
+        # إذا أصبح العنوان فارغاً (مثلاً كان يحتوي على عربية فقط)، نضع اسماً افتراضياً آمناً
         if not safe_filename:
             safe_filename = "video"
 

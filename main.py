@@ -58,12 +58,20 @@ def get_video(url: str = Query(..., description="The URL of the video")):
 @app.get("/proxy-download")
 async def proxy_download(url: str = Query(..., description="The direct video URL"), filename: str = "video"):
     try:
+        # إضافة ترويسات تحاكي المتصفح لتجاوز حظر 403 الخاص بتيك توك ومنصات البث
+        headers_waterfall = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Referer": "https://www.tiktok.com/"
+        }
+
         async def video_streamer():
-            # اتصال مباشر وسريع بدون بروكسيات وسيطة
-            async with httpx.AsyncClient(timeout=None) as client:
+            # اتصال مباشر مع الترويسات الجديدة لتجاوز الفلترة
+            async with httpx.AsyncClient(timeout=None, headers=headers_waterfall) as client:
                 async with client.stream("GET", url) as response:
                     if response.status_code != 200:
-                        raise HTTPException(status_code=response.status_code, detail="Failed to fetch video source")
+                        raise HTTPException(status_code=response.status_code, detail=f"Failed to fetch video source, status: {response.status_code}")
                     async for chunk in response.aiter_bytes(chunk_size=8192):
                         yield chunk
         

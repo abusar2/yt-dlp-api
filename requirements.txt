@@ -2,3 +2,6 @@ fastapi
 uvicorn
 pydantic
 yt-dlp
+fastapi>=0.100.0
+uvicorn>=0.22.0
+yt-dlp>=2025.01.01

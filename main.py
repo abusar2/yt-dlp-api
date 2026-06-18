@@ -8,7 +8,6 @@ import yt_dlp
 
 app = FastAPI(title="Universal Video Downloader API")
 
-# تفعيل الـ CORS لمنع حظر مدونة بلوجر من استلام البيانات
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,18 +18,28 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"status": "alive", "message": "Dockerized yt-dlp API is running with FFmpeg!"}
+    return {"status": "alive", "message": "Dockerized yt-dlp API is running smoothly!"}
 
 @app.get("/get-video")
 def get_video(url: str = Query(..., description="The URL of the video")):
     if not url:
         raise HTTPException(status_code=400, detail="Missing URL parameter")
     
+    # الإعدادات الجديدة المتقدمة لتخطي حظر وفلترة يوتيوب
     ydl_opts = {
         'format': 'best',
         'quiet': True,
         'no_warnings': True,
         'allowed_extractors': ['.*'],
+        'nocheckcertificate': True,  # تخطي فحص الشهادات الأمنية
+        'geo_bypass': True,          # تخطي الحظر الجغرافي
+        # التمويه: إيهام يوتيوب أن الطلب من متصفح حقيقي وليس سيرفر
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Sec-Fetch-Mode': 'navigate',
+        }
     }
     
     try:

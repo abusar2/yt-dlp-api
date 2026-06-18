@@ -1,116 +1,87 @@
 import os
-import json
-import time
-import subprocess
-import yt_dlp
+import uvicorn
 import httpx
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from urllib.parse import quote
+from fastapi.responses import StreamingResponse
+import yt_dlp
 
-app = FastAPI()
+app = FastAPI(title="Universal Video Downloader API")
 
-# تفعيل الـ CORS لربط السيرفر بمدونة بلوجر بدون قيود
+# 1. تفعيل الـ CORS لحل مشكلة الحظر والسماح لمدونة بلوجر بالاتصال بالسيرفر بحرية
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # يسمح لجميع النطاقات بالوصول، يمكنك تخصيصه لرابط مدونتك لاحقاً
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# نظام الكاش للتوكن لضمان سرعة السيرفر
-cached_token = None
-cached_visitor_data = None
-last_token_time = 0
-TOKEN_EXPIRY = 3600  # تجديد التوكن كل ساعة
+# الصفحة الرئيسية للسيرفر للتأكد من أنه يعمل
+@app.get("/")
+def read_root():
+    return {"status": "alive", "message": "Universal Video Downloader API is running successfully!"}
 
-def get_live_po_token():
-    """توليد توكن يوتيوب تلقائياً في الخلفية عبر Node.js"""
-    global cached_token, cached_visitor_data, last_token_time
-    current_time = time.time()
-    
-    if cached_token and cached_visitor_data and (current_time - last_token_time < TOKEN_EXPIRY):
-        return cached_visitor_data, cached_token
-
-    try:
-        result = subprocess.run(
-            ["youtube-po-token-generator"], 
-            capture_output=True, 
-            text=True, 
-            check=True
-        )
-        token_data = json.loads(result.stdout)
-        cached_visitor_data = token_data.get("visitorData")
-        cached_token = token_data.get("poToken")
-        last_token_time = current_time
-        print("🚀 [PoToken] Token updated successfully!")
-        return cached_visitor_data, cached_token
-    except Exception as e:
-        print(f"❌ [PoToken Error]: {e}")
-        if cached_token:
-            return cached_visitor_data, cached_token
-        raise Exception("Failed to generate PO Token.")
-
+# 2. مسار استخراج بيانات الفيديو (متوافق تماماً مع كود بلوجر الخاص بك)
 @app.get("/get-video")
-async def get_video(url: str = Query(..., description="Social media video URL")):
-    """المسار الأول: جلب معلومات الفيديو وصورة العرض والرابط المباشر"""
-    try:
-        ydl_opts = {
-            'format': 'best',
-            'quiet': True,
-            'no_warnings': True,
-        }
-
-        if "youtube.com" in url or "youtu.be" in url:
-            visitor_data, po_token = get_live_po_token()
-            ydl_opts['extractor_args'] = {
-                'youtube': {
-                    'po_token': [f'web+{po_token}', visitor_data],
-                }
-            }
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            formats = info.get('formats', [])
-            download_url = info.get('url')
-            
-            if not download_url and formats:
-                suitable = [f for f in formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none']
-                download_url = suitable[-1].get('url') if suitable else formats[-1].get('url')
-
-            # تنظيف اسم الفيديو لحمايته من المشاكل البرمجية
-            title = info.get('title', 'video').replace('/', '_').replace('\\', '_')
-
-            return {
-                "title": title,
-                "thumbnail": info.get('thumbnail', 'https://placehold.co/120x90?text=Ready'),
-                "url": download_url
-            }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.get("/proxy-download")
-async def proxy_download(url: str = Query(...), filename: str = Query("video.mp4")):
-    """المسار الثاني والجديد: إجبار المتصفح على تحميل الفيديو فوراً بدلاً من تشغيله"""
+def get_video(url: str = Query(..., description="The URL of the social media video")):
+    if not url:
+        raise HTTPException(status_code=400, detail="Missing URL parameter")
     
-    # التأكد من إضافة امتداد mp4 للملف
-    if not filename.endswith(".mp4"):
-        filename += ".mp4"
-        
-    async def stream_video():
-        # استخدام httpx لعمل تحويل (Stream) لبيانات الفيديو مباشرة للمستخدم
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream("GET", url) as response:
-                async for chunk in response.aiter_bytes(chunk_size=1024 * 64): # 64KB chunks
-                    yield chunk
-
-    # تشفير اسم الملف ليدعم اللغة العربية بامتياز بدون رموز غريبة
-    encoded_filename = quote(filename)
-    headers = {
-        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
-        "Content-Type": "video/mp4"
+    # إعدادات أداة yt-dlp لجلب أفضل جودة بدون تحميلها على السيرفر
+    ydl_opts = {
+        'format': 'best',
+        'quiet': True,
+        'no_warnings': True,
+        'allowed_extractors': ['.*'],
     }
     
-    return StreamingResponse(stream_video(), headers=headers)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            # استخراج الرابط المباشر الفعلي للتحميل
+            video_url = info.get('url') or (info.get('formats')[-1].get('url') if info.get('formats') else None)
+            title = info.get('title', 'Video successfully fetched')
+            thumbnail = info.get('thumbnail', '')
+            
+            if not video_url:
+                raise HTTPException(status_code=404, detail="Could not extract direct download URL")
+                
+            return {
+                "url": video_url,
+                "title": title,
+                "thumbnail": thumbnail
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error extracting video: {str(e)}")
+
+# 3. مسار الوسيط (Proxy) لإجبار المتصفح على تحميل الفيديو فوراً بدلاً من تشغيله في صفحة جديدة
+@app.get("/proxy-download")
+async def proxy_download(url: str = Query(..., description="The direct video URL"), filename: str = "video"):
+    try:
+        async def video_streamer():
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("GET", url) as response:
+                    if response.status_code != 200:
+                        raise HTTPException(status_code=response.status_code, detail="Failed to fetch video source")
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                        yield chunk
+        
+        # تنظيف اسم الملف من أي رموز غريبة
+        safe_filename = "".join([c for c in filename if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+        if not safe_filename:
+            safe_filename = "video"
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{safe_filename}.mp4"',
+            "Content-Type": "video/mp4"
+        }
+        return StreamingResponse(video_streamer(), media_type="video/mp4", headers=headers)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+
+# 4. إعداد ربط المنفذ (Port Binding) الديناميكي المفروض من منصة Render
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)

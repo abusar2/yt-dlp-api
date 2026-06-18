@@ -6,8 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import yt_dlp
 
-app = FastAPI(title="Universal Video Downloader API")
+app = FastAPI(title="Universal Video Downloader API with Proxy")
 
+# 1. تفعيل الـ CORS لمنع حظر مدونة بلوجر من استلام البيانات
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,15 +19,16 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"status": "alive", "message": "Radical TV-Spoofing API is running!"}
+    return {"status": "alive", "message": "Dockerized API is running with Webshare Proxy!"}
 
 @app.get("/get-video")
 def get_video(url: str = Query(..., description="The URL of the video")):
     if not url:
         raise HTTPException(status_code=400, detail="Missing URL parameter")
     
-    # الإعداد الجذري: التظاهر بأننا شاشة تلفزيون ذكية أو تطبيق iOS
-    # هذا يمنع يوتيوب من طلب "تسجيل الدخول" أو فحص البوتات
+    # رابط البروكسي الخاص بك من Webshare الذي أرسلته
+    proxy_url = "http://inztosxh:sx4o7qzr69gq@p.webshare.io:80"
+    
     ydl_opts = {
         'format': 'best',
         'quiet': True,
@@ -35,7 +37,10 @@ def get_video(url: str = Query(..., description="The URL of the video")):
         'nocheckcertificate': True,
         'geo_bypass': True,
         
-        # الخدعة هنا: استخدام مشغلات التلفزيون والـ iOS المدمجة وتخطي فحص الويب المعتاد
+        # تفعيل البروكسي لإخفاء IP سيرفر Render تماماً وتخطي حظر يوتيوب جذرياً
+        'proxy': proxy_url,
+        
+        # تمويه إضافي لضمان أعلى استقرار
         'extractor_args': {
             'youtube': {
                 'player_client': ['tvembedded', 'ios'],
@@ -43,7 +48,7 @@ def get_video(url: str = Query(..., description="The URL of the video")):
             }
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (SmartHub; SMART-TV; Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) SmartTV Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         }
     }
     
@@ -63,13 +68,17 @@ def get_video(url: str = Query(..., description="The URL of the video")):
                 "thumbnail": thumbnail
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error extracting video: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Proxy Extraction Error: {str(e)}")
 
 @app.get("/proxy-download")
 async def proxy_download(url: str = Query(..., description="The direct video URL"), filename: str = "video"):
     try:
+        # نمرر البروكسي أيضاً لعملية تجميع وسحب الـ chunks إذا لزم الأمر لمنع حظر التحميل المباشر
+        proxy_url = "http://inztosxh:sx4o7qzr69gq@p.webshare.io:80"
+        
         async def video_streamer():
-            async with httpx.AsyncClient(timeout=None) as client:
+            # إعداد httpx ليعبر من خلال البروكسي الخاص بك
+            async with httpx.AsyncClient(proxies={"http://": proxy_url, "https://": proxy_url}, timeout=None) as client:
                 async with client.stream("GET", url) as response:
                     if response.status_code != 200:
                         raise HTTPException(status_code=response.status_code, detail="Failed to fetch video source")
@@ -86,7 +95,7 @@ async def proxy_download(url: str = Query(..., description="The direct video URL
         }
         return StreamingResponse(video_streamer(), media_type="video/mp4", headers=headers)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Proxy download error: {str(e)}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

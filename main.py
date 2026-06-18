@@ -6,9 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import yt_dlp
 
-app = FastAPI(title="Universal Video Downloader API with Proxy")
+app = FastAPI(title="Stable Video Downloader API")
 
-# 1. تفعيل الـ CORS لمنع حظر مدونة بلوجر من استلام البيانات
+# 1. تفعيل الـ CORS لمنع حظر مدونة بلوجر
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,37 +19,21 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"status": "alive", "message": "Dockerized API is running with Webshare Proxy!"}
+    return {"status": "alive", "message": "Stable API is running perfectly without YouTube/Proxy!"}
 
+# 2. مسار جلب الفيديو (تنظيف كامل من أكواد يوتيوب والبروكسي)
 @app.get("/get-video")
 def get_video(url: str = Query(..., description="The URL of the video")):
     if not url:
         raise HTTPException(status_code=400, detail="Missing URL parameter")
     
-    # رابط البروكسي الخاص بك من Webshare الذي أرسلته
-    proxy_url = "http://inztosxh:sx4o7qzr69gq@p.webshare.io:80"
-    
+    # إعدادات قياسية وسريعة جداً للمنصات الأخرى
     ydl_opts = {
         'format': 'best',
         'quiet': True,
         'no_warnings': True,
         'allowed_extractors': ['.*'],
         'nocheckcertificate': True,
-        'geo_bypass': True,
-        
-        # تفعيل البروكسي لإخفاء IP سيرفر Render تماماً وتخطي حظر يوتيوب جذرياً
-        'proxy': proxy_url,
-        
-        # تمويه إضافي لضمان أعلى استقرار
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['tvembedded', 'ios'],
-                'skip': ['webpage', 'authcheck']
-            }
-        },
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        }
     }
     
     try:
@@ -68,17 +52,15 @@ def get_video(url: str = Query(..., description="The URL of the video")):
                 "thumbnail": thumbnail
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Proxy Extraction Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Extraction Error: {str(e)}")
 
+# 3. مسار التحميل المباشر القسري (الوسيط المستقر)
 @app.get("/proxy-download")
 async def proxy_download(url: str = Query(..., description="The direct video URL"), filename: str = "video"):
     try:
-        # نمرر البروكسي أيضاً لعملية تجميع وسحب الـ chunks إذا لزم الأمر لمنع حظر التحميل المباشر
-        proxy_url = "http://inztosxh:sx4o7qzr69gq@p.webshare.io:80"
-        
         async def video_streamer():
-            # إعداد httpx ليعبر من خلال البروكسي الخاص بك
-            async with httpx.AsyncClient(proxies={"http://": proxy_url, "https://": proxy_url}, timeout=None) as client:
+            # اتصال مباشر وسريع بدون بروكسيات وسيطة
+            async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream("GET", url) as response:
                     if response.status_code != 200:
                         raise HTTPException(status_code=response.status_code, detail="Failed to fetch video source")
@@ -95,7 +77,7 @@ async def proxy_download(url: str = Query(..., description="The direct video URL
         }
         return StreamingResponse(video_streamer(), media_type="video/mp4", headers=headers)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Proxy download error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Download error: {str(e)}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
